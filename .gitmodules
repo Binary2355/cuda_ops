@@ -1,0 +1,3 @@
+[submodule "src/gemm_fused/gemm_swiglu/third_party/cutlass"]
+	path = src/gemm_fused/gemm_swiglu/third_party/cutlass
+	url = https://github.com/NVIDIA/cutlass.git
