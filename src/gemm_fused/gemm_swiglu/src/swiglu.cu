@@ -8,12 +8,15 @@
 #include <vector>
 #include <tuple>
 #include <cuda_runtime.h>
-#include "cutlass/cutlass.h"
-#include "cutlass/half.h"
-#include "cutlass/util/host_tensor.h"
-#include "cutlass/util/packed_stride.hpp"
-#include "cutlass/gemm/device/gemm.h"
-#include "cutlass/epilogue/thread/linear_combination.h"
+#include <cutlass/cutlass.h>
+#include <cutlass/half.h>
+#include <cutlass/util/host_tensor.h>
+#include <cutlass/util/packed_stride.hpp>
+#include <cutlass/gemm/device/gemm.h>
+#include <cutlass/epilogue/thread/linear_combination.h>
+#include <cutlass/gemm/device/gemm_universal_adapter.h>
+#include <cutlass/gemm/collective/collective_builder.hpp>
+#include <cutlass/epilogue/collective/collective_builder.hpp>
 #include "custom_combination.h"
 
 #define CHECK_CUDA(x) TORCH_CHECK(x.is_cuda(), #x " must be a CUDA tensor")
@@ -43,7 +46,7 @@ cudaError_t CutlassHGemmNN(
     using LayoutC = cutlass::layout::RowMajor;
 
     using OpClass = cutlass::arch::OpClassTensorOp;
-    using ArchTag = cutlass::arch::Sm80;
+    using ArchTag = cutlass::arch::Sm90;
 
     using ThreadblockShape = cutlass::gemm::GemmShape<128, 128, 32>;
     using WarpShape = cutlass::gemm::GemmShape<64, 64, 32>;
@@ -56,21 +59,23 @@ cudaError_t CutlassHGemmNN(
         ElementAccumulator>;
 
     using Gemm = cutlass::gemm::device::Gemm<
-        ElementA,
-        LayoutA,
-        ElementB,
-        LayoutB,
-        ElementC,
-        LayoutC,
-        ElementAccumulator,
-        OpClass,
-        ArchTag,
-        ThreadblockShape,
-        WarpShape,
-        InstructionShape,
-        EpilogueOp,
+        cutlass::half_t,                           // ElementA
+        cutlass::layout::RowMajor,                 // LayoutA
+        cutlass::half_t,                           // ElementB
+        cutlass::layout::RowMajor,                 // LayoutB
+        cutlass::half_t,                           // ElementC
+        cutlass::layout::RowMajor,                 // LayoutC
+        float,                                     // ElementAccumulator
+        cutlass::arch::OpClassTensorOp,            // OperatorClass
+        cutlass::arch::Sm80,                       // Architecture
+        cutlass::gemm::GemmShape<128, 128, 32>,   // ThreadblockShape
+        cutlass::gemm::GemmShape<64, 64, 32>,     // WarpShape
+        cutlass::gemm::GemmShape<16, 8, 16>,      // InstructionShape
+        EpilogueOp,                                // EpilogueOutputOp
         cutlass::gemm::threadblock::GemmIdentityThreadblockSwizzle<>,
-        3  // stages
+        3,                                         // Stages
+        8,                                         // AlignmentA
+        8                                          // AlignmentB
     >;
 
     typename Gemm::Arguments args(
@@ -121,7 +126,7 @@ cudaError_t CutlassHGemmSwiGlu(
     using LayoutC = cutlass::layout::RowMajor;
 
     using OpClass = cutlass::arch::OpClassTensorOp;
-    using ArchTag = cutlass::arch::Sm80;
+    using ArchTag = cutlass::arch::Sm90;
 
     using ThreadblockShape = cutlass::gemm::GemmShape<128, 128, 32>;
     using WarpShape = cutlass::gemm::GemmShape<64, 64, 32>;
